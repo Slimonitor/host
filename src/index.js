@@ -4,8 +4,11 @@ const request = require('request-promise-native');
 
 const config = require('../config.js');
 
-const maxMessags = 1000; // TODO
+const maxMessagesInBuffer = 1000; // TODO
 const messageStack = [];
+const messageTypes = {
+    hostHealth: 'hostHeath'
+};
 
 /*function formatBytes(bytes, decimals) {
     if(bytes == 0) return '0 Bytes';
@@ -25,38 +28,33 @@ function printSysInfo(data) {
     }
 }*/
 
-function saveMessage(message) {
+function saveMessageInStack(message) {
     messageStack.push(message);
 }
 
-function hostReportMessage(data) {
+function buildMessageStructure(data) {
     return {
-        type: 'hosthealth',
+        type: messageTypes.hostHealth,
         timestamp: Date.now(),
-        data: data,
+        data: data
     };
 }
 
-function loopSysInfo() {
-    si.getAllInfo().then((data) => {
-        saveMessage(hostReportMessage(data));
-        setTimeout(loopSysInfo, config.updateinterval);
-    }).catch((err) => {
+function collectSystemInformation() {
+    si.getAllInfo().then(data => {
+        saveMessageInStack(buildMessageStructure(data));
+        setTimeout(collectSystemInformation, config.updateInterval);
+    }).catch(err => {
         debug('Can\'t fetch data: ', err);
     });
 }
 
-loopSysInfo();
-
-debug('Starting Slimonitor for host ', config.host.name);
-
-
-function loopSendData() {
-    if(messageStack.length == 0) {
-        setTimeout(loopSendData, config.sendinterval);
+function transmitMessagesToServer() {
+    if (messageStack.length === 0) {
+        setTimeout(transmitMessagesToServer, config.sendInterval);
         return;
     }
-    var options = {
+    const options = {
         method: 'POST',
         uri: config.server.address + '/host/data',
         body: {
@@ -64,33 +62,35 @@ function loopSendData() {
             messages: messageStack
         },
         headers: {
-            'Content-Type': 'application/json',  
+            'Content-Type': 'application/json'
         },
         json: true // Automatically stringifies the body to JSON
     };
      
     request(options).then((response) => {
         if(response.error) {
-            cantSendMessages(response.message);
+            handleTransmitError(response.message);
         } else {
             debug('Sent', messageStack.length, 'messages to server:');
             debug(response);
             messageStack.length = 0; // TODO It probably can race-condition and loose some saved data?
-            setTimeout(loopSendData, config.sendinterval);
+            setTimeout(transmitMessagesToServer, config.sendInterval);
         }
-    }).catch((err) => {
-        cantSendMessages(err);
-    });
+    }).catch(handleTransmitError);
 }
 
-function cantSendMessages(err) {
+function handleTransmitError(err) {
     debug('Can\'t send update to server:', err);
-    if(messageStack.length >= maxMessags) {
-        debug('Too many messages stored in buffer, cleaning up', messageStack.length - maxMessags + 1, 'messages...');
-        while(messageStack.length >= maxMessags)
-            messageStack.pop();
+    if (messageStack.length >= maxMessagesInBuffer) {
+        debug('Too many messages stored in buffer, cleaning up',
+            messageStack.length - maxMessagesInBuffer + 1, 'messages...');
+        while (messageStack.length >= maxMessagesInBuffer) {
+            messageStack.shift(); // remove old messages
+        }
     }
-    setTimeout(loopSendData, config.sendinterval);
+    setTimeout(transmitMessagesToServer, config.sendInterval);
 }
 
-loopSendData();
+debug('Starting Slimonitor for host', config.host.name);
+collectSystemInformation();
+transmitMessagesToServer();
