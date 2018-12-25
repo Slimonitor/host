@@ -1,9 +1,13 @@
 const debug = require('debug')('slimonitor:index');
 const si = require('./sysinfo.js');
+const request = require('request-promise-native');
 
-//const config = require('../config.js');
+const config = require('../config.js');
 
-function formatBytes(bytes, decimals) {
+const maxMessags = 1000; // TODO
+const messageStack = [];
+
+/*function formatBytes(bytes, decimals) {
     if(bytes == 0) return '0 Bytes';
     var k = 1024,
         dm = decimals <= 0 ? 0 : decimals || 2,
@@ -14,20 +18,79 @@ function formatBytes(bytes, decimals) {
 
 function printSysInfo(data) {
     debug('Memory: ', formatBytes(data.mem.used), ' / ', formatBytes(data.mem.total));
-    debug('CPU: ', data.cpuInfo.cores, ' cores @ ', data.cpuInfo.speed);
+    debug('CPU: ', data.cpuInfo.cores, ' cores @ ', data.cpuInfo.speed, 'Ghz');
     for(var c = 0; c < data.cpuInfo.cores; ++c) {
         var cpu = data.load.cpus[c];
         debug('#', c, cpu.load, '% (Usr: ', cpu.load_user, '%, Sys: ', cpu.lod_system, '%, Irq: ', cpu.load_irq, '%)');
     }
+}*/
+
+function saveMessage(message) {
+    messageStack.push(message);
+}
+
+function hostReportMessage(data) {
+    return {
+        type: 'hosthealth',
+        timestamp: Date.now(),
+        data: data,
+    };
 }
 
 function loopSysInfo() {
     si.getAllInfo().then((data) => {
-        printSysInfo(data);
-        setTimeout(loopSysInfo, 1000);
+        saveMessage(hostReportMessage(data));
+        setTimeout(loopSysInfo, config.updateinterval);
     }).catch((err) => {
         debug('Can\'t fetch data: ', err);
     });
 }
 
-setTimeout(loopSysInfo, 1000);
+loopSysInfo();
+
+debug('Starting Slimonitor for host ', config.host.name);
+
+
+function loopSendData() {
+    if(messageStack.length == 0) {
+        setTimeout(loopSendData, config.sendinterval);
+        return;
+    }
+    var options = {
+        method: 'POST',
+        uri: config.server.address + '/host/data',
+        body: {
+            host: config.host.name,
+            messages: messageStack
+        },
+        headers: {
+            'Content-Type': 'application/json',  
+        },
+        json: true // Automatically stringifies the body to JSON
+    };
+     
+    request(options).then((response) => {
+        if(response.error) {
+            cantSendMessages(response.message);
+        } else {
+            debug('Sent', messageStack.length, 'messages to server:');
+            debug(response);
+            messageStack.length = 0; // TODO It probably can race-condition and loose some saved data?
+            setTimeout(loopSendData, config.sendinterval);
+        }
+    }).catch((err) => {
+        cantSendMessages(err);
+    });
+}
+
+function cantSendMessages(err) {
+    debug('Can\'t send update to server:', err);
+    if(messageStack.length >= maxMessags) {
+        debug('Too many messages stored in buffer, cleaning up', messageStack.length - maxMessags + 1, 'messages...');
+        while(messageStack.length >= maxMessags)
+            messageStack.pop();
+    }
+    setTimeout(loopSendData, config.sendinterval);
+}
+
+loopSendData();
