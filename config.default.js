@@ -3,8 +3,8 @@ module.exports = {
             name: 'Host'
         },
         server: {
-            address: 'http://localhost:4080',
+            address: 'http://localhost:4080'
         },
-        updateinverval: 1000,
-        sendinterval: 60000
+        updateInterval: 1000,
+        sendInterval: 60000
 };
