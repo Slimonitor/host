@@ -9,6 +9,7 @@ const messageStack = [];
 const messageTypes = {
     hostHealth: 'hostHeath'
 };
+let hostId = null;
 
 /*function formatBytes(bytes, decimals) {
     if(bytes == 0) return '0 Bytes';
@@ -58,7 +59,7 @@ function transmitMessagesToServer() {
         method: 'POST',
         uri: config.server.address + '/host/data',
         body: {
-            host: config.host.name,
+            hostId: hostId,
             messages: messageStack
         },
         headers: {
@@ -68,7 +69,7 @@ function transmitMessagesToServer() {
     };
      
     request(options).then((response) => {
-        if(response.error) {
+        if (response.error) {
             handleTransmitError(response.message);
         } else {
             debug('Sent', messageStack.length, 'messages to server:');
@@ -91,6 +92,39 @@ function handleTransmitError(err) {
     setTimeout(transmitMessagesToServer, config.sendInterval);
 }
 
-debug('Starting Slimonitor for host', config.host.name);
-collectSystemInformation();
-transmitMessagesToServer();
+/**
+ * @returns Promise
+ */
+function registerOnServer() {
+    return si.getCpuInfo().then(cpuInfo => {
+        const options = {
+            method: 'POST',
+            uri: config.server.address + '/host/register',
+            body: {
+                name: config.host.name,
+                cpuInfo: cpuInfo
+            },
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            json: true
+        };
+        return request(options);
+    }).then(response => {
+        if (response.error) {
+            throw new Error(response.message);
+        }
+        hostId = response.message;
+        return hostId;
+    }).catch(err => {
+        debug(err.toString());
+        process.exit();
+    });
+
+}
+
+registerOnServer().then(hostId => {
+    debug('Starting Slimonitor for host', config.host.name, 'registered as', hostId);
+    collectSystemInformation();
+    transmitMessagesToServer();
+});
