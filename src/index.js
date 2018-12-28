@@ -7,7 +7,7 @@ const config = require('../config.js');
 const maxMessagesInBuffer = 1000; // TODO
 const messageStack = [];
 const messageTypes = {
-    hostHealth: 'hostHeath'
+    hostHealth: 'hostHealth'
 };
 let hostId = null;
 
