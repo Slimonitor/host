@@ -1,14 +1,8 @@
 const debug = require('debug')('slimonitor:index');
 const si = require('./sysinfo.js');
-const request = require('request-promise-native');
-
+const messages = require('./messages.js');
 const config = require('../config.js');
-
-const maxMessagesInBuffer = 1000; // TODO
-const messageStack = [];
-const messageTypes = {
-    hostHealth: 'hostHeath'
-};
+const serverApi = require('./server-api.js')(config);
 
 /*function formatBytes(bytes, decimals) {
     if(bytes == 0) return '0 Bytes';
@@ -28,21 +22,9 @@ function printSysInfo(data) {
     }
 }*/
 
-function saveMessageInStack(message) {
-    messageStack.push(message);
-}
-
-function buildMessageStructure(data) {
-    return {
-        type: messageTypes.hostHealth,
-        timestamp: Date.now(),
-        data: data
-    };
-}
-
 function collectSystemInformation() {
     si.getAllInfo().then(data => {
-        saveMessageInStack(buildMessageStructure(data));
+        messages.pushMessage(messages.buildHostMessage(data));
         setTimeout(collectSystemInformation, config.updateInterval);
     }).catch(err => {
         debug('Can\'t fetch data: ', err);
@@ -50,30 +32,17 @@ function collectSystemInformation() {
 }
 
 function transmitMessagesToServer() {
-    if (messageStack.length === 0) {
+    if (!messages.hasMessages()) {
         setTimeout(transmitMessagesToServer, config.sendInterval);
         return;
     }
-    const options = {
-        method: 'POST',
-        uri: config.server.address + '/host/data',
-        body: {
-            host: config.host.name,
-            messages: messageStack
-        },
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        json: true // Automatically stringifies the body to JSON
-    };
-     
-    request(options).then((response) => {
+    const messagesToSend = messages.getMessagesToSend();
+    serverApi.sendMessages(messagesToSend).then((response) => {
         if(response.error) {
             handleTransmitError(response.message);
         } else {
-            debug('Sent', messageStack.length, 'messages to server:');
-            debug(response);
-            messageStack.length = 0; // TODO It probably can race-condition and loose some saved data?
+            debug('Sent', messagesToSend.length, 'messages to server:', response);
+            messages.discardSentMessages();
             setTimeout(transmitMessagesToServer, config.sendInterval);
         }
     }).catch(handleTransmitError);
@@ -81,13 +50,7 @@ function transmitMessagesToServer() {
 
 function handleTransmitError(err) {
     debug('Can\'t send update to server:', err);
-    if (messageStack.length >= maxMessagesInBuffer) {
-        debug('Too many messages stored in buffer, cleaning up',
-            messageStack.length - maxMessagesInBuffer + 1, 'messages...');
-        while (messageStack.length >= maxMessagesInBuffer) {
-            messageStack.shift(); // remove old messages
-        }
-    }
+    messages.returnSentMessagesToStack();
     setTimeout(transmitMessagesToServer, config.sendInterval);
 }
 
