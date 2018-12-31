@@ -3,6 +3,13 @@ const request = require('request-promise-native');
 const config = require('../config.js');
 
 let hostId = null;
+const commonOptions = {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    json: true
+};
 
 module.exports = {
     /**
@@ -11,16 +18,12 @@ module.exports = {
     registerOnServer: () => {
         return si.getCpuInfo().then(cpuInfo => {
             const options = {
-                method: 'POST',
+                ...commonOptions,
                 uri: config.server.address + '/host/register',
                 body: {
                     name: config.host.name,
                     cpuInfo: cpuInfo
-                },
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                json: true
+                }
             };
             return request(options);
         }).then(response => {
@@ -34,16 +37,12 @@ module.exports = {
 
     sendMessages: (messagesToSend) => {
         const options = {
-            method: 'POST',
+            ...commonOptions,
             uri: config.server.address + '/host/data',
             body: {
                 hostId: hostId,
                 messages: messagesToSend
-            },
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            json: true // Automatically stringifies the body to JSON
+            }
         };
 
         return request(options);
