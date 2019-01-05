@@ -21,7 +21,7 @@ module.exports = {
                 ...commonOptions,
                 uri: config.server.address + '/host/register',
                 body: {
-                    name: config.host.name,
+                    host: config.host,
                     cpuInfo: cpuInfo
                 }
             };
