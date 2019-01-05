@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npm run build && DEBUG=* node dist/index.js",
-    "start-windows": "npm run build && set DEBUG=* && node dist/index.js",
+    "start": "npm run build && DEBUG=slimonitor:* node dist/index.js",
+    "start-windows": "npm run build && set DEBUG=slimonitor:* && node dist/index.js",
     "build": "babel src -d dist",
     "lint": "eslint src",
     "pre-commit": "(npm run lint) || exit 1",
@@ -32,6 +32,9 @@
   },
   "dependencies": {
     "@babel/polyfill": "^7.2.5",
-    "debug": "^4.1.1"
+    "debug": "^4.1.1",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.5",
+    "systeminformation": "^3.52.2"
   }
 }
